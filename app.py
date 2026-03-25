@@ -6,6 +6,9 @@ import json
 from database.connection import get_connection
 from pathlib import Path
 import base64
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from io import BytesIO
 
 # Configuração da página
 st.set_page_config(
@@ -85,35 +88,45 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# Cabeçalho customizado
+# Cabeçalho customizado + botão Plano de Adaptação
 # -------------------------------------------------------------------
 logo_path = Path(__file__).parent / "assets" / "AdaptaLogo.png"
-
 
 def image_to_base64(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
+col_logo, col_title, col_btn = st.columns([0.12, 0.68, 0.20])
 
-if logo_path.exists():
-    logo_base64 = image_to_base64(logo_path)
-    st.markdown(f"""
-    <div style="margin-top: -1rem; margin-bottom: 0.5rem;">
-        <table style="border-collapse: collapse; border: none;">
-            <tr>
-                <td style="border: none; padding: 0; vertical-align: middle;">
-                    <img src="data:image/png;base64,{logo_base64}" width="180" style="display: block;">
-                </td>
-                <td style="border: none; padding-left: 10px; vertical-align: middle;">
-                    <h1 style="margin: 0; font-size: 2.5rem; line-height: 1.2;">Painel Municipal</h1>
-                </td>
-            </tr>
-        </table>
-    </div>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("<h1 style='margin-top: -1rem;'>Painel Municipal</h1>", unsafe_allow_html=True)
+with col_logo:
+    if logo_path.exists():
+        logo_base64 = image_to_base64(logo_path)
+        st.markdown(f'<img src="data:image/png;base64,{logo_base64}" width="180">', unsafe_allow_html=True)
 
+with col_title:
+    st.markdown("<h1 style='margin: 0; line-height: 1.2;'>Painel Municipal</h1>", unsafe_allow_html=True)
+
+with col_btn:
+    # Função para gerar o PDF em memória
+    def generate_pdf():
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=letter)
+        c.setFont("Helvetica", 24)
+        c.drawString(100, 750, "Plano de Adaptação")
+        c.setFont("Helvetica", 12)
+        c.drawString(100, 700, "Documento gerado pelo Painel Municipal")
+        c.save()
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    # Botão de download direto
+    st.download_button(
+        label="Plano de Adaptação",
+        data=generate_pdf(),
+        file_name="plano_adaptacao.pdf",
+        mime="application/pdf",
+        key="plan_download"
+    )
 
 # -------------------------------------------------------------------
 # Funções de carregamento de dados com cache (sem spinner do sistema)
@@ -415,6 +428,7 @@ with col_direita:
             )
 
         if not df_dados.empty:
+            # HTML correto para a tabela
             html = """
             <div style='max-height: 450px; overflow-y: auto; font-family: sans-serif; margin-top: 20px; padding-bottom: 50px;'>
                 <table style='border-collapse: collapse; border: 0; margin-right: auto;'>
