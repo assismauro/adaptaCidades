@@ -18,15 +18,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# CSS personalizado com fundo temático de mudanças climáticas
+# CSS personalizado
 st.markdown("""
 <style>
-    /* Fundo da aplicação com gradiente suave de céu a terra */
     .stApp {
         background: linear-gradient(145deg, #a8d8ea 0%, #f0f0c0 50%, #d2b48c 100%);
         background-attachment: fixed;
     }
-    /* Overlay semi-transparente para melhor contraste do conteúdo */
     .main > .block-container {
         background-color: rgba(255, 255, 255, 0.85);
         border-radius: 20px;
@@ -36,7 +34,6 @@ st.markdown("""
         box-shadow: 0 4px 20px rgba(0,0,0,0.1);
         backdrop-filter: blur(3px);
     }
-    /* Ajustes de padding e borda (mantidos) */
     [data-testid="collapsedControl"] {
         display: none;
     }
@@ -46,7 +43,6 @@ st.markdown("""
     div[data-testid="stHorizontalBlock"] {
         column-gap: 100px !important;
     }
-    /* Tooltip customizado */
     .tooltip-cell {
         position: relative;
         cursor: pointer;
@@ -87,54 +83,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------------------------
-# Cabeçalho customizado + botão Plano de Adaptação
-# -------------------------------------------------------------------
-logo_path = Path(__file__).parent / "assets" / "AdaptaLogo.png"
-
-def image_to_base64(image_path):
-    with open(image_path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode()
-
-col_logo, col_title, col_btn = st.columns([0.12, 0.68, 0.20])
-
-with col_logo:
-    if logo_path.exists():
-        logo_base64 = image_to_base64(logo_path)
-        st.markdown(f'<img src="data:image/png;base64,{logo_base64}" width="180">', unsafe_allow_html=True)
-
-with col_title:
-    st.markdown("<h1 style='margin: 0; line-height: 1.2;'>Painel Municipal</h1>", unsafe_allow_html=True)
-
-with col_btn:
-    def generate_pdf():
-        buffer = BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
-        c.setFont("Helvetica", 24)
-        c.drawString(100, 750, "Plano de Adaptação")
-        c.setFont("Helvetica", 12)
-        c.drawString(100, 700, "Documento gerado pelo Painel Municipal")
-        c.save()
-        buffer.seek(0)
-        return buffer.getvalue()
-
-    st.download_button(
-        label="Plano de Adaptação",
-        data=generate_pdf(),
-        file_name="plano_adaptacao.pdf",
-        mime="application/pdf",
-        key="plan_download"
-    )
 
 # -------------------------------------------------------------------
-# Funções de carregamento de dados com cache (sem spinner do sistema)
+# Funções de carregamento de dados com cache
 # -------------------------------------------------------------------
 @st.cache_data(ttl=600, show_spinner=False)
 def load_municipios():
     query = """
-            SELECT id, state, CONCAT(name, ' - ', state) AS display
+            SELECT id, name, state, CONCAT(name, ' - ', state) AS display
             FROM adaptabrasil.county
-            ORDER BY display; \
+            ORDER BY display;
             """
     try:
         conn = get_connection()
@@ -247,9 +205,7 @@ def load_county_data_view(cidade_id, ano, sep=None):
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-@st.cache_data(ttl=600, show_spinner=False)
 def load_ranking_data(cidade_id, ano, sep):
-    # First get the geographic values for the city and year
     geo_query = f"""
     SELECT county, state, microregion, mesoregion, region
     FROM adaptabrasil.mv_painel_municipal
@@ -274,7 +230,6 @@ def load_ranking_data(cidade_id, ano, sep):
 
     query = f"""
     SELECT * FROM (
-        -- País
         SELECT 
             0 as orderby,
             'País' as label,
@@ -292,7 +247,6 @@ def load_ranking_data(cidade_id, ano, sep):
         ) ranked
         WHERE county = '{county_name}'
         UNION
-        -- Estado
         SELECT 
             1 as orderby,
             'Estado' as label,
@@ -313,7 +267,6 @@ def load_ranking_data(cidade_id, ano, sep):
         ) ranked
         WHERE county = '{county_name}'
         UNION
-        -- Região
         SELECT 
             2 as orderby,
             'Região' as label,
@@ -333,7 +286,6 @@ def load_ranking_data(cidade_id, ano, sep):
         ) ranked
         WHERE county = '{county_name}'
         UNION
-        -- Mesorregião
         SELECT 
             3 as orderby,
             'Mesorregião' as label,
@@ -354,7 +306,6 @@ def load_ranking_data(cidade_id, ano, sep):
         ) ranked
         WHERE county = '{county_name}'
         UNION
-        -- Microrregião
         SELECT 
             4 as orderby,
             'Microrregião' as label,
@@ -386,18 +337,137 @@ def load_ranking_data(cidade_id, ano, sep):
         conn.close()
         return pd.DataFrame()
 
+
 # -------------------------------------------------------------------
-# Carregar lista de municípios (inicial)
+# Carregar lista de municípios
 # -------------------------------------------------------------------
 with st.spinner("Carregando municípios..."):
     df_municipios = load_municipios()
 
-# Inicializar session_state se necessário
+
+# -------------------------------------------------------------------
+# Funções auxiliares para o PDF
+# -------------------------------------------------------------------
+def draw_footer(c, width, height, page_num, total_pages=None):
+    c.setStrokeColorRGB(0.5, 0.5, 0.5)
+    c.setLineWidth(0.5)
+    c.line(50, 50, width - 50, 50)
+    c.setFont("Helvetica", 8)
+    footer_text = "Documento gerado pelo Painel Municipal"
+    c.drawString(50, 35, footer_text)
+    if total_pages:
+        page_text = f"Página {page_num} de {total_pages}"
+    else:
+        page_text = f"Página {page_num}"
+    c.drawRightString(width - 50, 35, page_text)
+
+
+# -------------------------------------------------------------------
+# Cabeçalho customizado + botão Plano de Adaptação
+# -------------------------------------------------------------------
+logo_path = Path(__file__).parent / "assets" / "AdaptaLogo.png"
+
+
+def image_to_base64(image_path):
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
+
+
+col_logo, col_title, col_btn = st.columns([0.12, 0.68, 0.20])
+
+with col_logo:
+    if logo_path.exists():
+        logo_base64 = image_to_base64(logo_path)
+        st.markdown(f'<img src="data:image/png;base64,{logo_base64}" width="180">', unsafe_allow_html=True)
+
+with col_title:
+    st.markdown("<h1 style='margin: 0; line-height: 1.2;'>Painel Municipal</h1>", unsafe_allow_html=True)
+
+with col_btn:
+    selected_city_display = st.session_state.get('cidade_select')
+    button_disabled = selected_city_display is None
+
+    # Botão para gerar o PDF
+    if st.button("Plano de Adaptação", key="plan_button", disabled=button_disabled):
+        with st.spinner("Gerando PDF..."):
+            # Capturar os valores diretamente dos widgets
+            current_city_display = st.session_state.get('cidade_select')
+            current_ano = st.session_state.get('ano_select')
+            current_sep = st.session_state.get('sep_select')
+
+            # Obter nome da cidade
+            current_city_name = ""
+            current_city_state = ""
+            if current_city_display and not df_municipios.empty:
+                cidade_row = df_municipios[df_municipios['display'] == current_city_display]
+                if not cidade_row.empty:
+                    current_city_name = cidade_row.iloc[0]['name']
+                    current_city_state = cidade_row.iloc[0]['state']
+
+            # Criar o PDF
+            buffer = BytesIO()
+            c = canvas.Canvas(buffer, pagesize=letter)
+            width, height = letter
+            page_num = 1
+
+            # Centralizar o título
+            c.setFont("Helvetica-Bold", 24)
+            title = "Plano de Adaptação"
+            title_width = c.stringWidth(title, "Helvetica-Bold", 24)
+            c.drawString((width - title_width) / 2, height - 50, title)
+
+            # Município
+            y = height - 100
+            c.setFont("Helvetica", 14)
+            c.drawString(50, y, f"Município: {current_city_name} - {current_city_state}")
+
+            # Ano
+            y -= 25
+            c.setFont("Helvetica", 12)
+            if current_ano:
+                ano_display = current_ano.strip() if isinstance(current_ano, str) else str(current_ano)
+            else:
+                ano_display = "Não selecionado"
+            c.drawString(50, y, f"Ano: {ano_display}")
+
+            # Setor Estratégico
+            y -= 25
+            if current_sep and current_sep != "Selecione o Setor Estratégico desejado":
+                c.drawString(50, y, f"Setor Estratégico: {current_sep}")
+            else:
+                c.drawString(50, y, "Setor Estratégico: Todos os Setores")
+
+            # Adicionar rodapé
+            draw_footer(c, width, height, page_num)
+
+            c.save()
+            buffer.seek(0)
+
+            # Armazenar o PDF no session_state
+            st.session_state['pdf_data'] = buffer.getvalue()
+            st.session_state['pdf_filename'] = f"Plano de Adaptação - {current_city_name}-{current_city_state}.pdf"
+            st.session_state['pdf_ready'] = True
+
+            st.success("PDF gerado com sucesso! Clique no botão abaixo para baixar.")
+            # Removeu o st.rerun() - agora a página não recarrega
+
+    # Mostrar botão de download se o PDF estiver pronto
+    if st.session_state.get('pdf_ready', False):
+        st.download_button(
+            label="Baixar PDF",
+            data=st.session_state['pdf_data'],
+            file_name=st.session_state['pdf_filename'],
+            mime="application/pdf",
+            key="pdf_download"
+        )
+
+# Inicializar session_state
 if 'cidade_id' not in st.session_state:
     st.session_state['cidade_id'] = None
     st.session_state['estado_cidade'] = None
     st.session_state['selected_ano'] = None
     st.session_state['selected_sep'] = None
+    st.session_state['pdf_ready'] = False
 
 # -------------------------------------------------------------------
 # Layout em duas colunas
@@ -405,7 +475,6 @@ if 'cidade_id' not in st.session_state:
 col_esquerda, col_direita = st.columns([1, 1], gap="large")
 
 with col_esquerda:
-    # Seleção da cidade
     if not df_municipios.empty:
         opcoes_cidades = df_municipios['display'].tolist()
         selected_display = st.selectbox(
@@ -420,7 +489,6 @@ with col_esquerda:
         st.warning("Lista de municípios não disponível.")
         selected_display = None
 
-    # Se cidade selecionada, atualizar session_state, resetar setor e carregar anos
     if selected_display:
         cidade_row = df_municipios[df_municipios['display'] == selected_display].iloc[0]
         st.session_state['cidade_id'] = cidade_row['id']
@@ -453,7 +521,6 @@ with col_esquerda:
         st.session_state['selected_ano'] = None
         st.session_state['selected_sep'] = None
 
-    # Se cidade e ano selecionados, carregar setores
     if st.session_state['cidade_id'] and st.session_state['selected_ano']:
         with st.spinner("Carregando setores disponíveis..."):
             setores_disponiveis = load_setores_para_cidade_ano(
@@ -474,7 +541,6 @@ with col_esquerda:
     else:
         st.session_state['selected_sep'] = None
 
-    # Mapa da cidade
     if st.session_state['cidade_id'] and st.session_state['selected_ano']:
         with st.spinner("Carregando mapa da cidade..."):
             cidade_features, lat, lon = load_city_geojson(st.session_state['cidade_id'])
@@ -519,11 +585,10 @@ with col_esquerda:
     elif st.session_state['cidade_id']:
         st.info("Selecione um ano para visualizar o mapa e os dados.")
 
-    # Tabela de ranking (aparece apenas quando setor está selecionado)
     if (st.session_state['cidade_id'] and
-        st.session_state['selected_ano'] and
-        st.session_state['selected_sep'] and
-        st.session_state['selected_sep'] != "Selecione o Setor Estratégico desejado"):
+            st.session_state['selected_ano'] and
+            st.session_state['selected_sep'] and
+            st.session_state['selected_sep'] != "Selecione o Setor Estratégico desejado"):
         with st.spinner("Carregando ranking..."):
             df_rank = load_ranking_data(
                 st.session_state['cidade_id'],
@@ -533,16 +598,21 @@ with col_esquerda:
         if not df_rank.empty:
             st.markdown("### Ranking")
             df_display = df_rank[['label', 'resolucao', 'ranking', 'total_lines']].copy()
-            df_display['ranking/total_lines'] = df_display['ranking'].astype(str) + "/" + df_display['total_lines'].astype(str)
-            df_display = df_display[['label', 'resolucao', 'ranking/total_lines']]
+            df_display['ranking/total_lines'] = df_display['ranking'].astype(str) + "/" + df_display[
+                'total_lines'].astype(str)
             rows_html = []
             for _, row in df_display.iterrows():
-                rows_html.append("<tr>")
-                rows_html.append(f"<td style='padding:8px 12px; border:none; font-family:sans-serif;'>{row['label']}</td>")
-                rows_html.append(f"<td style='padding:8px 12px; border:none; font-family:sans-serif;'>{row['resolucao']}</td>")
-                rows_html.append(f"<td style='padding:8px 12px; border:none; text-align:right; font-family:monospace; font-weight:bold;'>{row['ranking/total_lines']}</td>")
-                rows_html.append("</tr>")
-            html_table = "<div style='max-height:300px; overflow-y:auto;'><table style='border-collapse:collapse; width:100%;'>" + "".join(rows_html) + "</table></div>"
+                rows_html.append("<tr style='border: 0;'>")
+                rows_html.append(
+                    "<td style='padding:8px 12px; border:none; font-family:sans-serif;'>" + row['label'] + "<" + "/td>")
+                rows_html.append("<td style='padding:8px 12px; border:none; font-family:sans-serif;'>" + row[
+                    'resolucao'] + "<" + "/td>")
+                rows_html.append(
+                    "<td style='padding:8px 12px; border:none; text-align:right; font-family:monospace; font-weight:bold;'>" +
+                    row['ranking/total_lines'] + "<" + "/td>")
+                rows_html.append("<" + "/tr>")
+            html_table = "<div style='max-height:300px; overflow-y:auto;'><table style='border-collapse:collapse; width:100%;'>" + "".join(
+                rows_html) + "<" + "/table></div>"
             st.markdown(html_table, unsafe_allow_html=True)
         else:
             st.info("Nenhum dado de ranking disponível para este setor.")
@@ -560,11 +630,20 @@ with col_direita:
             rows = []
             for _, row in df_dados.iterrows():
                 rows.append("<tr style='border: 0;'>")
-                rows.append(f"<td style='padding: 5px 15px 5px 5px; text-align: center; border: none;' class='tooltip-cell' data-tooltip='{row['sep']}'><img src='{row['imageurl']}' width='32' height='32'></td>")
-                rows.append(f"<td style='padding: 5px 5px 5px 10px; text-align: left; font-family: \"Courier New\", monospace; font-weight: bold; background-color: {row['color']}; border-radius: 4px; line-height: 32px; border: none;' class='tooltip-cell' data-tooltip='{row['sep']}'>{row['value']:.3f}</td>")
-                rows.append(f"<td style='padding: 5px 10px 5px 15px; text-align: left; font-family: sans-serif; border: none;'>{row['label']}</td>")
-                rows.append("</tr>")
-            html = "<div style='max-height: 450px; overflow-y: auto; font-family: sans-serif; margin-top: 20px; padding-bottom: 50px;'><table style='border-collapse: collapse; border: 0; margin-right: auto;'>" + "".join(rows) + "</table></div>"
+                rows.append(
+                    "<td style='padding: 5px 15px 5px 5px; text-align: center; border: none;' class='tooltip-cell' data-tooltip='" +
+                    row['sep'] + "'><img src='" + row['imageurl'] + "' width='32' height='32'><" + "/td>")
+                rows.append(
+                    "<td style='padding: 5px 5px 5px 10px; text-align: left; font-family: \"Courier New\", monospace; font-weight: bold; background-color: " +
+                    row[
+                        'color'] + "; border-radius: 4px; line-height: 32px; border: none;' class='tooltip-cell' data-tooltip='" +
+                    row['sep'] + "'>" + f"{row['value']:.3f}" + "<" + "/td>")
+                rows.append(
+                    "<td style='padding: 5px 10px 5px 15px; text-align: left; font-family: sans-serif; border: none;'>" +
+                    row['label'] + "<" + "/td>")
+                rows.append("<" + "/tr>")
+            html = "<div style='max-height: 450px; overflow-y: auto; font-family: sans-serif; margin-top: 20px; padding-bottom: 50px;'><table style='border-collapse: collapse; border: 0; margin-right: auto;'>" + "".join(
+                rows) + "<" + "/table></div>"
             st.markdown(html, unsafe_allow_html=True)
         else:
             st.info("Nenhum dado disponível para este município no ano e setor selecionados.")
