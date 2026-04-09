@@ -3,7 +3,7 @@ import pandas as pd
 import pydeck as pdk
 import plotly.express as px
 import json
-from database.connection import get_connection
+from db.connection import get_connection
 from pathlib import Path
 import base64
 from reportlab.lib.pagesizes import letter
@@ -101,14 +101,14 @@ def load_municipios():
         return df
     except Exception as e:
         st.error(f"Erro ao carregar municípios: {e}")
-        return pd.DataFrame()
+        return None
 
 
 @st.cache_data(ttl=600, show_spinner=False)
 def load_anos_para_cidade(cidade_id):
     query = f"""
     SELECT DISTINCT "year"
-    FROM adaptabrasil.mv_painel_municipal
+    FROM painel_municipal.adapta_data
     WHERE county_id = {cidade_id}
     ORDER BY "year";
     """
@@ -126,7 +126,7 @@ def load_anos_para_cidade(cidade_id):
 def load_setores_para_cidade_ano(cidade_id, ano):
     query = f"""
     SELECT DISTINCT sep
-    FROM adaptabrasil.mv_painel_municipal
+    FROM painel_municipal.adapta_data
     WHERE county_id = {cidade_id} AND "year" = '{ano}'
     ORDER BY sep;
     """
@@ -183,14 +183,14 @@ def load_county_data_view(cidade_id, ano, sep=None):
     if sep and sep != "Selecione o Setor Estratégico desejado":
         query = f"""
         SELECT sep, imageurl, color, value, label, "order"
-        FROM adaptabrasil.mv_painel_municipal
+        FROM painel_municipal.adapta_data
         WHERE county_id = {cidade_id} AND "year" = '{ano}' AND sep = '{sep}'
         ORDER BY value DESC;
         """
     else:
         query = f"""
         SELECT sep, imageurl, color, value, label, "order"
-        FROM adaptabrasil.mv_painel_municipal
+        FROM painel_municipal.adapta_data
         WHERE county_id = {cidade_id} AND "year" = '{ano}'
         ORDER BY value DESC;
         """
@@ -208,7 +208,7 @@ def load_county_data_view(cidade_id, ano, sep=None):
 def load_ranking_data(cidade_id, ano, sep):
     geo_query = f"""
     SELECT county, state, microregion, mesoregion, region
-    FROM adaptabrasil.mv_painel_municipal
+    FROM painel_municipal.adapta_data
     WHERE county_id = {cidade_id} AND "year" = '{ano}' AND sep = '{sep}'
     LIMIT 1;
     """
@@ -241,7 +241,7 @@ def load_ranking_data(cidade_id, ano, sep):
                 county,
                 RANK() OVER (ORDER BY value DESC) AS ranking,
                 COUNT(*) OVER () AS total_lines
-            FROM adaptabrasil.mv_painel_municipal
+            FROM painel_municipal.adapta_data
             WHERE year = '{ano}'
               AND sep = '{sep}'
         ) ranked
@@ -260,7 +260,7 @@ def load_ranking_data(cidade_id, ano, sep):
                 value,
                 RANK() OVER (ORDER BY value DESC) AS ranking,
                 COUNT(*) OVER () AS total_lines
-            FROM adaptabrasil.mv_painel_municipal
+            FROM painel_municipal.adapta_data
             WHERE year = '{ano}'
               AND sep = '{sep}'
               AND state = '{state}'
@@ -279,7 +279,7 @@ def load_ranking_data(cidade_id, ano, sep):
                 county,
                 RANK() OVER (ORDER BY value DESC) AS ranking,
                 COUNT(*) OVER () AS total_lines
-            FROM adaptabrasil.mv_painel_municipal
+            FROM painel_municipal.adapta_data
             WHERE year = '{ano}' 
               AND sep = '{sep}'
               AND region = '{region}'
@@ -299,7 +299,7 @@ def load_ranking_data(cidade_id, ano, sep):
                 value,
                 RANK() OVER (ORDER BY value DESC) AS ranking,
                 COUNT(*) OVER () AS total_lines
-            FROM adaptabrasil.mv_painel_municipal
+            FROM painel_municipal.adapta_data
             WHERE year = '{ano}'
               AND sep = '{sep}'
               AND mesoregion = '{mesoregion}'
@@ -319,7 +319,7 @@ def load_ranking_data(cidade_id, ano, sep):
                 value,
                 RANK() OVER (ORDER BY value DESC) AS ranking,
                 COUNT(*) OVER () AS total_lines
-            FROM adaptabrasil.mv_painel_municipal
+            FROM painel_municipal.adapta_data
             WHERE year = '{ano}'
               AND sep = '{sep}'
               AND microregion = '{microregion}'
